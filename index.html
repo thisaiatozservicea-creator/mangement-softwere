@@ -163,25 +163,6 @@ button.logout:hover{background:#cc0000}
   button{padding:8px 12px;font-size:10px}
 }
 
-/* Notifications - added without changing existing dashboard sections */
-.topbar-actions{display:flex;align-items:center;gap:10px;position:relative}
-.notification-wrap{position:relative}
-.notification-bell{position:relative;background:#222;color:#fff;border:1px solid #555;padding:9px 12px;font-size:18px;line-height:1;border-radius:10px}
-.notification-bell:hover{background:#333}
-.notification-count{position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;border-radius:20px;background:#e34c38;color:#fff;font-size:10px;display:none;align-items:center;justify-content:center;border:2px solid #111}
-.notification-panel{display:none;position:absolute;right:0;top:calc(100% + 12px);width:min(360px,calc(100vw - 24px));max-height:440px;overflow:auto;background:#fff;color:#111;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 12px 35px #0003;z-index:1200}
-.notification-panel.open{display:block}
-.notification-panel-head{position:sticky;top:0;background:#fff;padding:14px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;gap:8px;z-index:1}
-.notification-panel-head strong{font-size:14px}
-.notification-panel-head button{padding:7px 10px;font-size:10px}
-.notification-item{padding:12px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer}
-.notification-item.unread{background:#fff9df}
-.notification-item strong{display:block;font-size:12px;margin-bottom:4px}
-.notification-item p{font-size:11px;color:#666;line-height:1.45}
-.notification-item small{display:block;font-size:10px;color:#999;margin-top:6px}
-.notification-empty{padding:28px 14px;text-align:center;color:#888;font-size:12px}
-@media(max-width:480px){.notification-panel{right:-48px}.notification-bell{padding:8px 10px}}
-
 </style>
 </head>
 
@@ -192,24 +173,7 @@ button.logout:hover{background:#cc0000}
     <img src="logo.jpeg" alt="TSY Taxi logo">
     <div><strong>TSY TAXI</strong><small>SUPER ADMIN</small></div>
   </div>
-  <div class="topbar-actions">
-    <div class="notification-wrap" id="notificationWrap" style="display:none">
-      <button id="notificationBell" class="notification-bell" type="button" aria-label="Notifications" aria-expanded="false">🔔
-        <span id="notificationCount" class="notification-count">0</span>
-      </button>
-      <div id="notificationPanel" class="notification-panel" aria-label="Notifications panel">
-        <div class="notification-panel-head">
-          <strong>Notifications</strong>
-          <div style="display:flex;gap:6px">
-            <button id="enableDesktopNotifications" type="button">Enable alerts</button>
-            <button id="markAllNotificationsRead" type="button" style="background:#eee">Read all</button>
-          </div>
-        </div>
-        <div id="notificationList"><div class="notification-empty">No notifications yet</div></div>
-      </div>
-    </div>
-    <button id="logoutBtn" class="logout" style="display:none">Logout</button>
-  </div>
+  <button id="logoutBtn" class="logout" style="display:none">Logout</button>
 </header>
 
 <main>
@@ -239,6 +203,7 @@ button.logout:hover{background:#cc0000}
     <button data-tab="requests">Partner Requests</button>
     <button data-tab="coupons">Coupons</button>
     <button data-tab="reviews">Reviews</button>
+    <button data-tab="sendNotifications">Send Notification</button>
   </div>
 
   <!-- CREATE PARTNER TAB -->
@@ -348,6 +313,29 @@ button.logout:hover{background:#cc0000}
     </div>
   </div>
 
+  <!-- SEND NOTIFICATION TAB -->
+  <div id="sendNotifications" class="tab-content">
+    <div class="card">
+      <h2>Send Notification</h2>
+      <p style="font-size:13px;color:var(--muted);margin:-6px 0 18px">
+        Send an announcement to TSY TAXI customer and partner accounts.
+      </p>
+
+      <label for="broadcastTitle">Notification Title</label>
+      <input id="broadcastTitle" maxlength="100" placeholder="e.g. Welcome to TSY TAXI">
+
+      <label for="broadcastSubject">Subject / Notification Message</label>
+      <textarea id="broadcastSubject" rows="5" maxlength="1000"
+        placeholder="Enter the notification message..." 
+        style="width:100%;padding:12px;border:2px solid #e9e9e9;border-radius:8px;margin-bottom:16px;font:inherit;font-size:14px;resize:vertical"></textarea>
+
+      <button id="sendBroadcastBtn" class="btn-green" style="width:100%">
+        Send Notification
+      </button>
+      <p id="broadcastMessage" class="message" role="status"></p>
+    </div>
+  </div>
+
 </div>
 
 <!-- APPROVAL MODAL -->
@@ -450,8 +438,8 @@ const bookingsDb = getFirestore(bookingsApp);
 const $ = id => document.getElementById(id);
 
 // Hardcoded superadmin credentials
-const ADMIN_USERNAME = "muthu";
-const ADMIN_PASSWORD = "muthu";
+const ADMIN_USERNAME = "subash";
+const ADMIN_PASSWORD = "6869";
 
 let listeners = [];
 let partnerData = [];
@@ -464,93 +452,51 @@ let reviewsData = []; // All reviews
 let currentStarFilter = 'all'; // Current star filter
 
 
-// =====================
-// LIVE NOTIFICATIONS
-// Alerts are created only for documents added after the initial load.
-// =====================
-let notificationItems = [];
-let unreadNotificationCount = 0;
+// SEND BROADCAST NOTIFICATION
+$("sendBroadcastBtn").addEventListener("click", async () => {
+  const title = $("broadcastTitle").value.trim();
+  const subject = $("broadcastSubject").value.trim();
+  const status = $("broadcastMessage");
+  const button = $("sendBroadcastBtn");
 
-function addAdminNotification(title, message, type) {
-  const item = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title, message, type,
-    createdAt: new Date(),
-    read: false
+  if (!title || !subject) {
+    status.textContent = "Please enter both the notification title and message.";
+    status.className = "message error";
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Sending...";
+  status.textContent = "Publishing notification...";
+  status.className = "message";
+
+  const notification = {
+    title,
+    subject,
+    message: subject,
+    audience: "all",
+    createdBy: "subash",
+    createdAt: serverTimestamp()
   };
-  notificationItems.unshift(item);
-  notificationItems = notificationItems.slice(0, 40);
-  unreadNotificationCount++;
-  renderAdminNotifications();
 
-  // Native browser notification appears only after permission is granted.
-  if ("Notification" in window && Notification.permission === "granted" && document.visibilityState === "hidden") {
-    try { new Notification(title, { body: message, icon: "logo.jpeg", tag: item.id }); } catch (e) { console.warn("Desktop notification unavailable:", e); }
-  }
-}
-
-function renderAdminNotifications() {
-  const count = $("notificationCount");
-  count.textContent = unreadNotificationCount > 99 ? "99+" : String(unreadNotificationCount);
-  count.style.display = unreadNotificationCount ? "flex" : "none";
-
-  const list = $("notificationList");
-  if (!notificationItems.length) {
-    list.innerHTML = '<div class="notification-empty">No notifications yet</div>';
-    return;
-  }
-  list.innerHTML = notificationItems.map(item => `
-    <div class="notification-item ${item.read ? "" : "unread"}" data-notification-id="${item.id}">
-      <strong>${escapeNotificationText(item.title)}</strong>
-      <p>${escapeNotificationText(item.message)}</p>
-      <small>${item.createdAt.toLocaleString("en-IN")}</small>
-    </div>
-  `).join("");
-}
-
-function escapeNotificationText(value) {
-  return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
-}
-
-$("notificationBell").addEventListener("click", () => {
-  const isOpen = $("notificationPanel").classList.toggle("open");
-  $("notificationBell").setAttribute("aria-expanded", String(isOpen));
-});
-
-document.addEventListener("click", event => {
-  if (!$("notificationWrap").contains(event.target)) {
-    $("notificationPanel").classList.remove("open");
-    $("notificationBell").setAttribute("aria-expanded", "false");
-  }
-});
-
-$("notificationList").addEventListener("click", event => {
-  const item = event.target.closest("[data-notification-id]");
-  if (!item) return;
-  const notification = notificationItems.find(n => n.id === item.dataset.notificationId);
-  if (notification && !notification.read) {
-    notification.read = true;
-    unreadNotificationCount = Math.max(0, unreadNotificationCount - 1);
-    renderAdminNotifications();
-  }
-});
-
-$("markAllNotificationsRead").addEventListener("click", () => {
-  notificationItems.forEach(item => item.read = true);
-  unreadNotificationCount = 0;
-  renderAdminNotifications();
-});
-
-$("enableDesktopNotifications").addEventListener("click", async () => {
-  if (!("Notification" in window)) {
-    alert("This browser does not support desktop notifications.");
-    return;
-  }
   try {
-    const permission = await Notification.requestPermission();
-    alert(permission === "granted" ? "Desktop notifications enabled." : "Browser notification permission was not granted.");
+    // Publish to both Firestore projects used by this dashboard.
+    await Promise.all([
+      addDoc(collection(db, "notifications"), { ...notification }),
+      addDoc(collection(bookingsDb, "notifications"), { ...notification })
+    ]);
+
+    $("broadcastTitle").value = "";
+    $("broadcastSubject").value = "";
+    status.textContent = "Notification published successfully to both TSY TAXI Firestore projects.";
+    status.className = "message";
   } catch (error) {
-    alert("Could not enable desktop notifications: " + error.message);
+    console.error("Notification publish error:", error);
+    status.textContent = "Could not publish notification: " + error.message;
+    status.className = "message error";
+  } finally {
+    button.disabled = false;
+    button.textContent = "Send Notification";
   }
 });
 
@@ -572,7 +518,6 @@ $("loginBtn").addEventListener("click", () => {
     $("loginBox").style.display = "none";
     $("dashboard").style.display = "block";
     $("logoutBtn").style.display = "block";
-    $("notificationWrap").style.display = "block";
     startListeners();
   }, 500);
 });
@@ -587,9 +532,6 @@ $("logoutBtn").addEventListener("click", () => {
   $("dashboard").style.display = "none";
   $("loginBox").style.display = "block";
   $("logoutBtn").style.display = "none";
-  $("notificationWrap").style.display = "none";
-  $("notificationPanel").classList.remove("open");
-  $("notificationBell").setAttribute("aria-expanded", "false");
   $("adminPassword").value = "";
   $("loginMessage").textContent = "Logged out successfully.";
   $("loginMessage").className = "message";
@@ -1155,19 +1097,7 @@ function startListeners() {
     renderPartners();
   }));
 
-  let firstPartnerRequestSnapshot = true;
   listeners.push(onSnapshot(collection(db, "partnerRequests"), snapshot => {
-    if (!firstPartnerRequestSnapshot) {
-      snapshot.docChanges().forEach(change => {
-        if (change.type === "added") {
-          const request = change.doc.data();
-          if ((request.status || "pending").toLowerCase() === "pending") {
-            addAdminNotification("New partner request", `${request.name || request.partnerName || "A partner applicant"} · ${request.phone || "Phone not provided"}`, "partner-request");
-          }
-        }
-      });
-    }
-    firstPartnerRequestSnapshot = false;
     requestData = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
     renderRequests();
   }, error => console.error("Partner request listener error:", error)));
@@ -1178,35 +1108,13 @@ function startListeners() {
   }));
 
   // Listen to reviews from bookings database
-  let firstReviewSnapshot = true;
   listeners.push(onSnapshot(collection(bookingsDb, "reviews"), snapshot => {
-    if (!firstReviewSnapshot) {
-      snapshot.docChanges().forEach(change => {
-        if (change.type === "added") {
-          const review = change.doc.data();
-          addAdminNotification("New customer review", `${review.rating || "-"} star review · Booking ${review.bookingId || "N/A"}`, "review");
-        }
-      });
-    }
-    firstReviewSnapshot = false;
     reviewsData = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
     renderReviews();
   }, error => console.error("Review listener error:", error)));
 
   // Listen to bookings from bookings database and extract customers
-  let firstBookingSnapshot = true;
   listeners.push(onSnapshot(collection(bookingsDb, "bookings"), snapshot => {
-    if (!firstBookingSnapshot) {
-      snapshot.docChanges().forEach(change => {
-        if (change.type === "added") {
-          const booking = change.doc.data();
-          const passengerName = booking.passenger?.name || "A customer";
-          const bookingCode = booking.bookingId || change.doc.id;
-          addAdminNotification("New taxi booking", `${passengerName} · Booking ${bookingCode}`, "booking");
-        }
-      });
-    }
-    firstBookingSnapshot = false;
     bookingsData = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
 
     // Extract unique customers from all bookings
